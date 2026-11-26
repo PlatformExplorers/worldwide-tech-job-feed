@@ -1,0 +1,96 @@
+runtime:
+  state_path: data/seen-hashes.json
+  request_timeout_seconds: 20
+  request_retries: 3
+  max_posts_per_run: 40
+  max_job_age_days: 30
+  first_run_backfill: false
+
+discord:
+  # Set DISCORD_WEBHOOK_URL in the environment or GitHub Actions Secrets.
+  retries: 4
+  show_timestamp: true
+
+sources:
+  arbeitnow:
+    # Disabled until the public redistribution terms are verified for your use case.
+    enabled: false
+    poll_interval_minutes: 60
+    max_pages: 2
+  jobicy:
+    enabled: true
+    poll_interval_minutes: 60
+    count: 50
+  remotive:
+    # Remotive recommends no more than four requests per day.
+    enabled: false
+    poll_interval_minutes: 360
+    limit: 100
+  greenhouse:
+    enabled: false
+    poll_interval_minutes: 60
+    boards: []
+    company_names: {}
+  lever:
+    enabled: false
+    poll_interval_minutes: 60
+    sites: []
+    company_names: {}
+  rss:
+    enabled: false
+    poll_interval_minutes: 60
+    feeds: []
+
+filters:
+  include_keywords:
+    - software engineer
+    - developer
+    - cybersecurity
+    - information security
+    - penetration tester
+    - security analyst
+    - incident response
+    - devops
+    - devsecops
+    - site reliability
+    - cloud engineer
+    - data engineer
+    - data scientist
+    - machine learning
+    - artificial intelligence
+    - network engineer
+    - system administrator
+    - it support
+    - technical support
+    - database administrator
+    - qa engineer
+    - quality assurance
+    - technology
+    - software tester
+    - frontend
+    - back end
+    - full stack
+    - mobile developer
+    - web developer
+    - cloud computing
+    - aws
+    - azure
+    - google cloud
+    - information technology
+    - solutions architect
+    - robotics
+    - embedded systems
+    - blockchain
+    - game developer
+    - telecommunications
+    - it infrastructure
+    - technology internship
+    - graduate technology
+  job_titles: []
+  exclude_keywords:
+    - unpaid
+  countries: []
+  remote_only: false
+
+logging:
+  level: INFO
