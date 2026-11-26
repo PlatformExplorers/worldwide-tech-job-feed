@@ -99,11 +99,11 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
             raise ValueError("sources.himalayas.poll_interval_minutes must be at least 120")
         if name == "remotive" and options.get("enabled", False) and source_retries != 0:
             raise ValueError("Enabled Remotive sources require request_retries: 0")
-        for list_name, maximum in (("boards", 100), ("sites", 100), ("feeds", 50)):
+        for list_name, list_maximum in (("boards", 100), ("sites", 100), ("feeds", 50)):
             values = options.get(list_name)
-            if values is not None and (not isinstance(values, list) or len(values) > maximum):
+            if values is not None and (not isinstance(values, list) or len(values) > list_maximum):
                 raise ValueError(
-                    f"sources.{name}.{list_name} must be a list with at most {maximum} entries"
+                    f"sources.{name}.{list_name} must be a list with at most {list_maximum} entries"
                 )
     for key in ("include_keywords", "job_titles", "exclude_keywords", "countries"):
         value = filters.get(key, [])

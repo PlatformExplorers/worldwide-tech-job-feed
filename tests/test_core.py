@@ -13,7 +13,7 @@ from src.config import AppConfig, load_config
 from src.discord_client import DiscordClient, build_embed
 from src.filters import is_relevant
 from src.models import Job, normalize_text
-from src.scheduler import collect_sources
+from src.scheduler import collect_sources, run
 from src.sources.arbeitnow import ArbeitnowSource
 from src.sources.himalayas import HimalayasSource
 from src.sources.jobicy import JobicySource
@@ -276,6 +276,48 @@ def test_invalid_config_is_rejected(tmp_path) -> None:
     )
     with pytest.raises(ValueError, match="max_posts_per_run"):
         load_config(path)
+
+
+def test_configured_post_limit_is_preserved_and_enforced(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "runtime:\n  max_posts_per_run: 3\nsources:\n  jobicy:\n    enabled: true\n",
+        encoding="utf-8",
+    )
+    config = load_config(path)
+    config.discord_webhook_url = "https://discord.com/api/webhooks/123/token"
+    jobs = [
+        make_job(
+            title=f"Software Engineer {index}",
+            source_job_id=str(index),
+            url=f"https://jobs.example.com/role/{index}",
+        )
+        for index in range(5)
+    ]
+    sent = []
+
+    class Source:
+        def fetch(self):
+            return jobs
+
+    class Client:
+        def __init__(self, _config):
+            pass
+
+        def send_job(self, job):
+            sent.append(job)
+
+    monkeypatch.setattr("src.scheduler.source_instance", lambda *_args: Source())
+    monkeypatch.setattr("src.scheduler.DiscordClient", Client)
+    state = JobState(str(tmp_path / "state.json"))
+    state.initialized_sources.add("jobicy")
+    outcomes = run(config, state)
+    assert config.max_posts_per_run == 3
+    assert outcomes["published"] == 3
+    assert outcomes["eligible_again_next_run"] == 2
+    assert sent == jobs[:3]
+    assert all(state.has_seen(job) for job in jobs[:3])
+    assert not any(state.has_seen(job) for job in jobs[3:])
 
 
 def test_himalayas_preserves_application_link_and_maps_fields() -> None:

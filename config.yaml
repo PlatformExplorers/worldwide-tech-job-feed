@@ -2,7 +2,7 @@ runtime:
   state_path: data/seen-hashes.json
   request_timeout_seconds: 20
   request_retries: 3
-  max_posts_per_run: 40
+  max_posts_per_run: 3
   max_job_age_days: 30
   first_run_backfill: false
 

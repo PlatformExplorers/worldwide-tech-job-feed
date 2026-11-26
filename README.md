@@ -9,6 +9,7 @@ and original listing links; LinkedIn and other authenticated sites are not scrap
 
 Technology opportunities include graduate, junior, and internship roles in all
 seasons alongside experienced roles. Listings mentioning unpaid work are excluded.
+Posting is capped at three opportunities per workflow run across all sources combined.
 
 The Discord webhook is configured through the `DISCORD_WEBHOOK_URL` GitHub
 Actions secret. See [SECURITY.md](SECURITY.md) for security guidance.
