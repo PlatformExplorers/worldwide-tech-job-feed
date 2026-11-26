@@ -19,6 +19,7 @@ LOGGER = logging.getLogger(__name__)
 SOURCE_MODULES = {
     "arbeitnow": ("src.sources.arbeitnow", "ArbeitnowSource"),
     "jobicy": ("src.sources.jobicy", "JobicySource"),
+    "himalayas": ("src.sources.himalayas", "HimalayasSource"),
     "remotive": ("src.sources.remotive", "RemotiveSource"),
     "greenhouse": ("src.sources.greenhouse", "GreenhouseSource"),
     "lever": ("src.sources.lever", "LeverSource"),
@@ -64,10 +65,13 @@ def collect_sources(
             continue
         if not check_only and not source_filter:
             interval = int(options.get("poll_interval_minutes", 60))
-            if not _interval_elapsed(state.last_success.get(name), interval):
+            previous_poll = state.last_attempt.get(name) or state.last_success.get(name)
+            if not _interval_elapsed(previous_poll, interval):
                 outcomes[name] = "skipped: polling interval"
                 continue
         try:
+            if not check_only:
+                state.last_attempt[name] = datetime.now(timezone.utc).isoformat(timespec="seconds")
             jobs = source_instance(name, config).fetch()
             if check_only:
                 outcomes[name] = len(jobs)
