@@ -71,6 +71,9 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
         interval = options.get("poll_interval_minutes", 60)
         if not isinstance(interval, int) or not 1 <= interval <= 1440:
             raise ValueError(f"sources.{name}.poll_interval_minutes must be from 1 to 1440")
+        source_retries = options.get("request_retries", retries)
+        if not isinstance(source_retries, int) or not 0 <= source_retries <= 8:
+            raise ValueError(f"sources.{name}.request_retries must be an integer from 0 to 8")
         if name == "arbeitnow" and (
             not isinstance(options.get("max_pages", 2), int)
             or not 1 <= options.get("max_pages", 2) <= 10
@@ -85,6 +88,17 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
             or not 1 <= options.get("limit", 100) <= 100
         ):
             raise ValueError("sources.remotive.limit must be an integer from 1 to 100")
+        if name == "himalayas" and (
+            not isinstance(options.get("max_pages", 5), int)
+            or not 1 <= options.get("max_pages", 5) <= 10
+        ):
+            raise ValueError("sources.himalayas.max_pages must be an integer from 1 to 10")
+        if name == "remotive" and options.get("enabled", False) and interval < 360:
+            raise ValueError("sources.remotive.poll_interval_minutes must be at least 360")
+        if name == "himalayas" and options.get("enabled", False) and interval < 120:
+            raise ValueError("sources.himalayas.poll_interval_minutes must be at least 120")
+        if name == "remotive" and options.get("enabled", False) and source_retries != 0:
+            raise ValueError("Enabled Remotive sources require request_retries: 0")
         for list_name, maximum in (("boards", 100), ("sites", 100), ("feeds", 50)):
             values = options.get(list_name)
             if values is not None and (not isinstance(values, list) or len(values) > maximum):

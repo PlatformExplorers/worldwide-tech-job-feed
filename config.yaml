@@ -22,10 +22,16 @@ sources:
     poll_interval_minutes: 60
     count: 50
   remotive:
-    # Remotive recommends no more than four requests per day.
-    enabled: false
+    # Credit Remotive and retain its listing links; no third-party job-board syndication.
+    enabled: true
     poll_interval_minutes: 360
+    request_retries: 0
     limit: 100
+  himalayas:
+    # Browse responses are cached for two hours; at most 100 listings per poll.
+    enabled: true
+    poll_interval_minutes: 120
+    max_pages: 5
   greenhouse:
     enabled: false
     poll_interval_minutes: 60
@@ -44,8 +50,10 @@ sources:
 filters:
   include_keywords:
     - software engineer
+    - software
     - developer
     - cybersecurity
+    - cyber security
     - information security
     - penetration tester
     - security analyst
@@ -54,8 +62,11 @@ filters:
     - devsecops
     - site reliability
     - cloud engineer
+    - cloud support
     - data engineer
     - data scientist
+    - data analyst
+    - data analytics
     - machine learning
     - artificial intelligence
     - network engineer
@@ -77,6 +88,9 @@ filters:
     - azure
     - google cloud
     - information technology
+    - information systems
+    - computer science
+    - computer engineering
     - solutions architect
     - robotics
     - embedded systems
@@ -86,6 +100,12 @@ filters:
     - it infrastructure
     - technology internship
     - graduate technology
+    - it intern
+    - it internship
+    - it graduate
+    - it trainee
+    - it analyst
+    - junior it
   job_titles: []
   exclude_keywords:
     - unpaid

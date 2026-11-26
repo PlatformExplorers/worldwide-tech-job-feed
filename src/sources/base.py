@@ -38,7 +38,7 @@ class JobSource(ABC):
         params: dict[str, Any] | None = None,
         allow_redirects: bool = True,
     ) -> requests.Response:
-        attempts = self.config.request_retries + 1
+        attempts = int(self.options.get("request_retries", self.config.request_retries)) + 1
         for attempt in range(attempts):
             response: requests.Response | None = None
             try:

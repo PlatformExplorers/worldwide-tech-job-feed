@@ -34,6 +34,7 @@ class JobState:
         self.seen: set[str] = set()
         self.initialized_sources: set[str] = set()
         self.last_success: dict[str, str] = {}
+        self.last_attempt: dict[str, str] = {}
         if self.path.is_file():
             self._load()
 
@@ -47,6 +48,7 @@ class JobState:
         fingerprints_data = data.get("fingerprints")
         sources = data.get("initialized_sources")
         last_success = data.get("last_success")
+        last_attempt = data.get("last_attempt", {})
         if not isinstance(fingerprints_data, list) or not all(
             isinstance(item, str) and _FINGERPRINT_PATTERN.fullmatch(item)
             for item in fingerprints_data
@@ -61,6 +63,11 @@ class JobState:
         self.seen = set(fingerprints_data)
         self.initialized_sources = set(sources)
         self.last_success = last_success
+        if not isinstance(last_attempt, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in last_attempt.items()
+        ):
+            raise ValueError("Deduplication state contains invalid polling attempt markers")
+        self.last_attempt = last_attempt
 
     def has_seen(self, job: Job) -> bool:
         return bool(self.seen.intersection(fingerprints(job)))
@@ -74,6 +81,7 @@ class JobState:
             "version": 1,
             "initialized_sources": sorted(self.initialized_sources),
             "last_success": self.last_success,
+            "last_attempt": self.last_attempt,
             "fingerprints": sorted(self.seen),
         }
         descriptor, temporary_name = tempfile.mkstemp(

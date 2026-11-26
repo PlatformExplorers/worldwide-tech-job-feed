@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
+import requests
 
 from src.config import AppConfig, load_config
 from src.discord_client import DiscordClient, build_embed
@@ -10,7 +12,9 @@ from src.filters import is_relevant
 from src.models import Job, normalize_text
 from src.scheduler import collect_sources
 from src.sources.arbeitnow import ArbeitnowSource
+from src.sources.himalayas import HimalayasSource
 from src.sources.jobicy import JobicySource
+from src.sources.remotive import RemotiveSource
 from src.state import JobState
 from src.utils.url_utils import canonicalize_url, valid_http_url
 
@@ -66,6 +70,28 @@ def test_filter_uses_whole_terms_and_configured_technology() -> None:
     assert is_relevant(make_job(), config)
     assert not is_relevant(make_job(title="Marketing Writer", description="it is useful"), config)
     assert not is_relevant(make_job(description="Unpaid software engineer opportunity"), config)
+
+
+@pytest.mark.parametrize(
+    ("title", "description", "expected"),
+    [
+        ("Graduate Data Analyst", "", True),
+        ("Junior Cyber Security Consultant", "", True),
+        ("Summer Software Internship", "", True),
+        ("IT Intern", "", True),
+        ("Fall Computer Science Internship", "", True),
+        ("Junior Cloud Support Associate", "", True),
+        ("Senior Software Engineer", "", True),
+        ("Graduate Marketing Intern", "Support brand campaigns.", False),
+        ("Junior Sales Associate", "Sell consumer products.", False),
+        ("Software Internship", "This is an unpaid internship.", False),
+    ],
+)
+def test_configured_technology_filter_includes_entry_level_roles(
+    title: str, description: str, expected: bool
+) -> None:
+    config = load_config(Path(__file__).resolve().parents[1] / "config.yaml")
+    assert is_relevant(make_job(title=title, description=description), config) is expected
 
 
 def test_state_persists_only_hashes_and_prevents_repeats(tmp_path) -> None:
@@ -246,4 +272,140 @@ def test_invalid_config_is_rejected(tmp_path) -> None:
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="max_posts_per_run"):
+        load_config(path)
+
+
+def test_himalayas_preserves_application_link_and_maps_fields() -> None:
+    source = HimalayasSource(app_config(), {})
+    url = "https://himalayas.app/companies/acme/jobs/developer?utm_source=api"
+    job = source._normalize(
+        {
+            "title": "Software Engineer",
+            "companyName": "Acme",
+            "guid": "listing-123",
+            "applicationLink": url,
+            "locationRestrictions": ["Canada", "United States"],
+            "pubDate": 1767225600,
+            "expiryDate": 4102444800,
+            "minSalary": 100000,
+            "maxSalary": 150000,
+            "salaryPeriod": "annual",
+            "currency": "USD",
+            "description": "<p>Build reliable software.</p>",
+        }
+    )
+    assert job is not None
+    assert job.url == url
+    assert job.source_website == url
+    assert job.location == "Canada, United States"
+    assert job.salary_min == 100000
+    assert job.salary_period == "annual"
+    assert job.published_at == "2026-01-01T00:00:00+00:00"
+    assert job.description == "Build reliable software."
+    embed = build_embed(job, app_config())
+    assert embed["url"] == url
+    assert any(field["value"] == f"[Himalayas]({url})" for field in embed["fields"])
+    assert (
+        source._normalize(
+            {"title": "Engineer", "companyName": "Acme", "applicationLink": url, "expiryDate": 1}
+        )
+        is None
+    )
+
+
+def test_himalayas_pagination_is_bounded_and_keeps_fixed_endpoint() -> None:
+    source = HimalayasSource(app_config(), {"max_pages": 100000})
+    calls = []
+
+    class Response:
+        def json(self):
+            return {"jobs": [{}], "nextCursor": f"cursor-{len(calls)}"}
+
+    source.get = lambda url, params: calls.append((url, params.copy())) or Response()
+    assert source.fetch() == []
+    assert len(calls) == 10
+    assert all(url == source.endpoint and params["limit"] == 20 for url, params in calls)
+    assert calls[1][1]["cursor"] == "cursor-1"
+
+
+def test_himalayas_repeated_cursor_reports_failure() -> None:
+    source = HimalayasSource(app_config(), {})
+
+    class Response:
+        def json(self):
+            return {"jobs": [{}], "nextCursor": "repeated"}
+
+    source.get = lambda *_args, **_kwargs: Response()
+    with pytest.raises(ValueError, match="repeated pagination cursor"):
+        source.fetch()
+
+
+def test_remotive_caps_results_and_retains_attribution() -> None:
+    source = RemotiveSource(app_config(), {"limit": 1})
+    url = "https://remotive.com/remote-jobs/software-development/developer-123"
+
+    class Response:
+        def json(self):
+            return {
+                "jobs": [{"id": 123, "title": "Engineer", "company_name": "Acme", "url": url}] * 3
+            }
+
+    source.get = lambda *_args, **_kwargs: Response()
+    jobs = source.fetch()
+    assert len(jobs) == 1
+    assert jobs[0].source_website == url
+
+
+def test_remotive_request_retry_override_prevents_extra_requests(monkeypatch) -> None:
+    config = app_config()
+    config.request_retries = 3
+    source = RemotiveSource(config, {"request_retries": 0})
+    attempts = []
+
+    def fail(*_args, **_kwargs):
+        attempts.append(1)
+        raise requests.Timeout("Simulated timeout")
+
+    monkeypatch.setattr(source.session, "get", fail)
+    with pytest.raises(requests.Timeout):
+        source.fetch()
+    assert len(attempts) == 1
+
+
+def test_failed_poll_is_persisted_and_respects_interval(monkeypatch, tmp_path) -> None:
+    config = app_config()
+    config.raw["sources"] = {"remotive": {"enabled": True, "poll_interval_minutes": 360}}
+    calls = []
+
+    class Source:
+        def fetch(self):
+            calls.append(1)
+            raise requests.Timeout("Simulated timeout")
+
+    monkeypatch.setattr("src.scheduler.source_instance", lambda *_args: Source())
+    state = JobState(str(tmp_path / "seen.json"))
+    outcomes, candidates = collect_sources(config, state)
+    assert outcomes["remotive"] == "error: Timeout"
+    assert candidates == []
+    state.save()
+    restored = JobState(str(state.path))
+    assert "remotive" not in restored.last_success
+    outcomes, _ = collect_sources(config, restored)
+    assert outcomes["remotive"] == "skipped: polling interval"
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "settings", "message"),
+    [
+        ("himalayas", "poll_interval_minutes: 60", "at least 120"),
+        ("himalayas", "poll_interval_minutes: 120\n    max_pages: 11", "max_pages"),
+        ("remotive", "poll_interval_minutes: 60\n    request_retries: 0", "at least 360"),
+        ("remotive", "poll_interval_minutes: 360\n    request_retries: 1", "request_retries"),
+    ],
+)
+def test_source_limits_are_validated(tmp_path, source, settings, message) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(f"sources:\n  {source}:\n    enabled: true\n    {settings}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
         load_config(path)

@@ -13,12 +13,13 @@ class RemotiveSource(JobSource):
     endpoint = "https://remotive.com/api/remote-jobs"
 
     def fetch(self) -> list[Job]:
-        params = {"limit": max(1, min(int(self.options.get("limit", 100)), 100))}
+        limit = max(1, min(int(self.options.get("limit", 100)), 100))
+        params = {"limit": limit}
         response: Any = self.get(self.endpoint, params=params).json()
         if not isinstance(response, dict) or not isinstance(response.get("jobs"), list):
             raise ValueError("Remotive response did not contain a jobs list")
         jobs = []
-        for item in response["jobs"]:
+        for item in response["jobs"][:limit]:
             if not isinstance(item, dict) or not item.get("url"):
                 continue
             jobs.append(
@@ -28,6 +29,7 @@ class RemotiveSource(JobSource):
                     title=str(item.get("title", "")).strip(),
                     company=str(item.get("company_name", "")).strip(),
                     url=str(item["url"]),
+                    source_website=str(item["url"]),
                     company_website=text_or_none(item.get("company_url")),
                     company_logo_url=text_or_none(item.get("company_logo")),
                     location=text_or_none(item.get("candidate_required_location")),

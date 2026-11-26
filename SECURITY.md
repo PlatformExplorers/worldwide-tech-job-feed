@@ -14,6 +14,14 @@
 
 Listings are untrusted. HTML is reduced to plain text, HTTPS application links are validated, and Discord mentions are disabled. The application does not fetch application URLs. Source adapters use request timeouts, bounded retries, finite page/request limits, and independent error handling. Link validation reduces risk but cannot guarantee that an external job page is benign.
 
+## Source access and attribution
+
+- Jobicy remains enabled. [Himalayas](https://himalayas.app/docs/remote-jobs-api) and [Remotive](https://github.com/remotive-com/remote-jobs-api) supply public remote-job APIs without credentials. Preserve source credit and the API-provided listing link; do not syndicate their listings to other job boards, aggregators, Google Jobs, or LinkedIn Jobs.
+- Himalayas is polled every two hours, with at most five pages of 20 listings per poll. Its `applicationLink` is used unchanged; expired listings are skipped.
+- Remotive is polled every six hours without automatic request retries. Failed polling attempts also count toward the interval.
+- Greenhouse, Lever, and RSS remain opt-in until specific employer boards or feeds and their permitted use are verified. Arbeitnow remains disabled because redistribution permission is unverified.
+- Newly enabled sources establish fingerprint baselines on their first successful poll, rather than flooding the channel with existing listings. Coverage is bounded, not an exhaustive mirror of every job.
+
 ## Reporting
 
 Report security issues privately to the repository maintainer rather than filing a public issue with exploit details.
