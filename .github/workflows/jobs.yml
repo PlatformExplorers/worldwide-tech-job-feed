@@ -69,7 +69,7 @@ jobs:
           if git show-ref --verify --quiet refs/remotes/origin/job-state; then
             git worktree add "$RUNNER_TEMP/job-state" origin/job-state
           else
-            git worktree add --orphan job-state "$RUNNER_TEMP/job-state"
+            git worktree add --orphan -b job-state "$RUNNER_TEMP/job-state"
           fi
           mkdir -p "$RUNNER_TEMP/job-state/data"
           cp data/seen-hashes.json "$RUNNER_TEMP/job-state/data/seen-hashes.json"

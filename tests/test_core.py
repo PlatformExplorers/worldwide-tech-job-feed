@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import shlex
+import subprocess
 from pathlib import Path
 
 import pytest
 import requests
+import yaml
 
 from src.config import AppConfig, load_config
 from src.discord_client import DiscordClient, build_embed
@@ -409,3 +412,71 @@ def test_source_limits_are_validated(tmp_path, source, settings, message) -> Non
     path.write_text(f"sources:\n  {source}:\n    enabled: true\n    {settings}\n", encoding="utf-8")
     with pytest.raises(ValueError, match=message):
         load_config(path)
+
+
+def test_workflow_creates_and_updates_hash_only_state_branch(tmp_path) -> None:
+    workflow_path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "jobs.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    step = next(
+        item
+        for item in workflow["jobs"]["aggregate"]["steps"]
+        if item.get("name") == "Save hashed deduplication state"
+    )
+    commands = [
+        shlex.split(line.strip())
+        for line in step["run"].splitlines()
+        if line.strip().startswith("git worktree add ")
+    ]
+    application = tmp_path / "application"
+    application.mkdir()
+    remote = tmp_path / "remote.git"
+    worktree = tmp_path / "job-state"
+
+    def git(*args, cwd=application):
+        return subprocess.run(
+            ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-b", "main")
+    git("config", "user.name", "Workflow test")
+    git("config", "user.email", "test@example.com")
+    (application / "README.md").write_text("Application source\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "Initial application")
+    application_commit = git("rev-parse", "HEAD")
+    git("init", "--bare", str(remote))
+    git("remote", "add", "origin", str(remote))
+
+    def add_worktree(command):
+        args = [str(worktree) if arg == "$RUNNER_TEMP/job-state" else arg for arg in command[1:]]
+        git(*args)
+
+    add_worktree(commands[1])
+    assert not (worktree / "README.md").exists()
+    state_path = worktree / "data" / "seen-hashes.json"
+    state = JobState(str(state_path))
+    first = make_job()
+    state.mark_seen(first)
+    state.save()
+    git("add", "data/seen-hashes.json", cwd=worktree)
+    git("commit", "-m", "Initial fingerprints", cwd=worktree)
+    git("push", "origin", "HEAD:refs/heads/job-state", cwd=worktree)
+    git("worktree", "remove", str(worktree))
+    git("fetch", "origin", "refs/heads/job-state:refs/remotes/origin/job-state")
+
+    add_worktree(commands[0])
+    restored = JobState(str(state_path))
+    assert restored.has_seen(first)
+    second = make_job(source_job_id="second", url="https://jobs.example.com/second")
+    restored.mark_seen(second)
+    restored.save()
+    git("add", "data/seen-hashes.json", cwd=worktree)
+    git("commit", "-m", "Update fingerprints", cwd=worktree)
+    git("push", "origin", "HEAD:refs/heads/job-state", cwd=worktree)
+    git("worktree", "remove", str(worktree))
+    git("fetch", "origin", "refs/heads/job-state:refs/remotes/origin/job-state")
+    assert git("ls-tree", "-r", "--name-only", "origin/job-state") == "data/seen-hashes.json"
+    raw = git("show", "origin/job-state:data/seen-hashes.json")
+    assert first.url not in raw and second.url not in raw
+    assert state.seen < set(json.loads(raw)["fingerprints"])
+    assert git("rev-parse", "HEAD") == application_commit
